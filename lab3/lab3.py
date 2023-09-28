@@ -1,27 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits import mplot3d
 
 
-# Можешь заменить на лямбду если не похуй
 class f1:
     @staticmethod
     def f(point):
-        return point[0] ** 2 + (point[1] - 2) ** 2 + 2
+        return np.array([point[0] ** 2 + (point[1] - 2) ** 2 + 2])
 
     @staticmethod
     def grad(point):
-        return 2 * point[0], 2 * point[1] - 4
+        return np.array([2 * point[0], 2 * point[1] - 4])
 
 
 class f2:
     @staticmethod
     def f(point):
-        return 2 * point[0] ** 2 + point[0] * point[1] + point[1] ** 2
+        return np.array([2 * point[0] ** 2 + point[0] * point[1] + point[1] ** 2])
 
     @staticmethod
     def grad(point):
-        return 4 * point[0] + point[1], point[0] + 2 * point[1]
+        return np.array([4 * point[0] + point[1], point[0] + 2 * point[1]])
 
 
 class RandFunc:
@@ -36,15 +34,14 @@ class RandFunc:
         return self.grad(point)
 
 
-def const_grad_desc(point, func, learning_rate=0.05, tolerance=0.06):
-    iteration = 1
-    # Заводим список для того чтобы в последствии построить графики
-    point = np.array(point)
+def const_grad_desc(point, func, learning_rate=0.005, tolerance=0.06):
+    count_it, count_f, count_g = 0, 0, 0
     points = [point]
     while True:
-        # Находим градиент функции и смоотрим, достаточно ли его норма мала
+        # Находим градиент функции и смотрим, достаточно ли его норма мала
         # Чтобы можно было выйти из цикла
-        gradient = np.array(func.grad(point))
+        gradient = func.grad(point)
+        count_g += 1
         if np.linalg.norm(gradient) < tolerance:
             break
 
@@ -53,56 +50,51 @@ def const_grad_desc(point, func, learning_rate=0.05, tolerance=0.06):
         points.append(new_point)
         point = new_point
 
-        iteration += 1
+        count_it += 1
 
-    print(f"required number of iterations: {iteration}")
-    return points, iteration
+    return points, count_it, count_f, count_g
 
 
-# По сути почти ничем не отличается от предыдущего шага
-def armijo_grad_desc(point, func, learning_rate=0.5, c=0.5, tolerance=0.06):
-    iteration = 1
-    point = np.array(point)
+def armijo_grad_desc(point, func, learning_rate=1.0, c=0.5, tolerance=0.06):
+    count_it, count_f, count_g = 0, 0, 0
     points = [point]
 
     while True:
-        gradient = np.array(func.grad(point))
+        gradient = func.grad(point)
+        count_g += 1
+
         if np.linalg.norm(gradient) < tolerance:
             break
 
+        f_value = func.f(point)
+        count_f += 1
+
         # Armijo condition
         while True:
-            # Тут смотрим какие значения мы получим с текущим learning_rate
             new_point = point - learning_rate * gradient
-            # Эта поебота нужна для того чтобы сравнить новое значение функции с текущим
-            # И потом смотреть, принимать ли текущий learning_rate
-            decrease = c * learning_rate * np.linalg.norm(gradient) ** 2
+            new_f_value = func.f(new_point)
+            count_f += 1
+            decrease = c * learning_rate * gradient @ gradient
 
-            # Соответственно здесь мы этим и занимаемся
-            # В двух словах здесь если новое значение слишком слабо отличается то мы уменьшаем шаг
-            if func.f(point) <= func.f(new_point) + decrease:
+            if f_value - decrease <= new_f_value:
                 learning_rate *= 0.5
             else:
                 break
 
-        # Та же релаксация
-        new_point = point - learning_rate * gradient
-        points.append(new_point)
-        point = new_point
+        point = point - learning_rate * gradient
+        points.append(point)
 
-        iteration += 1
+        count_it += 1
 
-    print(f"required number of iterations: {iteration}")
-    return points, iteration
+    return points, count_it, count_f, count_g
 
 
-# Спиздил из второй лабы
-def golden_section_method(f, a: float, b: float, epsilon=1e-6) -> float:
+def golden_section_method(f, a: float, b: float, epsilon=1e-4):
     phi = (3 - 5 ** 0.5)/2
     x1 = a + (b - a) * phi
     x2 = b - (b - a) * phi
     f1, f2 = f(x1), f(x2)
-
+    count_f = 2
     while abs(b - a) > epsilon:
         if f1 < f2:
             b = x2
@@ -114,124 +106,87 @@ def golden_section_method(f, a: float, b: float, epsilon=1e-6) -> float:
             x1 = x2
             x2 = b - (b - a) * phi
             f1, f2 = f2, f(x2)
+        count_f += 1
 
-    return (a + b)/2
+    return (a + b)/2, count_f
 
 
-# Так же сам алгоритм ничем не отличается, просто выбираем шаг по-друому
 def fastest_grad_desc(point, func, tolerance=0.06):
-    iteration = 1
-    point = np.array(point)
+    count_it, count_f, count_g = 0, 0, 0
     points = [point]
 
-    # Я сосал меня ебали я еле вдуплил и то не вдуплил походу
-    # Не слушай меня сверху я того самого того этого ебал реп
-    f_lr = lambda lr: func.f(point - np.dot(lr, gradient))
+    f_lr = lambda lr: func.f(point - lr * gradient)
 
     while True:
-        gradient = np.array(func.grad(point))
+        gradient = func.grad(point)
+        count_g += 1
         if np.linalg.norm(gradient) < tolerance:
             break
 
-
-        # Ищем learning_rate с помощью золотого сечения. Как нахуй? А вот так
-        # Закидываем лямбда функцию в золотое сечение, с её помощью находим такой learing_rate,
-        #  Чтобы для текущего градиента мы получили наименьшее значение нашей функции
-        learning_rate = golden_section_method(f_lr, 0, 1, 0.05)
+        learning_rate, count = golden_section_method(f_lr, 0, 100)
+        count_f += count
         new_point = point - learning_rate * gradient
         points.append(new_point)
         point = new_point
 
-        iteration += 1
+        count_it += 1
 
-    print(f"required number of iterations: {iteration}")
-    return points, iteration
+    return points, count_it, count_f, count_g
 
 
-# Можете почитать про этот метод если не похуй как я понял есть несколько реализаций
-# Одна хуета полная которую я не понял от слова совсем,
-# Две другие основываются на методах Флетчера-Ривса и Полака-Рибьера
-# которые друг от друга почти ничемм не отличаются. У нас Флетчер
-def conjugate_grad_desc(point, func, tolerance=0.06):
-    iteration = 1
-    point = np.array(point)
+def conjugate_grad_desc(point, func, tolerance=0.0001):
+    count_it, count_f, count_g = 0, 0, 0
     points = [point]
+    N = len(point)
+    k = 0
 
-    f_lr = lambda lr: func.f(point - np.dot(lr, gradient))
-    gradient = np.array(func.grad(point))
+    f_lr = lambda lr: func.f(point - lr * gradient)
+    gradient = func.grad(point)
+    count_g += 1
 
-    while True:
-        if np.linalg.norm(gradient) < tolerance:
-            break
-
-        learning_rate = golden_section_method(f_lr, 0, 1, 0.05)
+    while np.linalg.norm(gradient) > tolerance:
+        learning_rate, count = golden_section_method(f_lr, 0, 100)
+        count_f += count
 
         new_point = point - learning_rate * gradient
-        new_gradient = np.array(func.grad(new_point))
+        k += 1
 
-        gamma = np.dot(new_gradient, new_gradient) / np.dot(gradient, gradient)
-        gradient = new_gradient
+        if k == N:
+            k = 0
+            gradient = func.grad(new_point)
+            count_g += 1
+        else:
+            tmp_grad = func.grad(new_point)
+            prev_grad = func.grad(point)
+            lr_2 = (tmp_grad @ tmp_grad) / (prev_grad @ prev_grad)
+            gradient = lr_2 * gradient + tmp_grad
+            count_g += 2
 
-        point = new_point - np.dot(gamma, gradient)
-        points.append(point)
-        iteration += 1
+        points.append(new_point)
+        point = new_point
+        count_it += 1
 
-    print(f"required number of iterations: {iteration}")
-    return points, iteration
-
-
-def generate_quadratic_func(n, k):
-    A = np.random.rand(n, n)
-    A = np.dot(A, A.transpose())
-
-    b = np.random.rand(n)
-
-    condition_number = np.linalg.cond(A)
-
-    A *= np.sqrt(k / condition_number)
-
-    # Тут тоже можешь заменить на лямбду если не похуй
-    def quadratic_function(x):
-        return 0.5 * np.dot(x, np.dot(A, x)) - np.dot(b, x)
-
-    def gradient(x):
-        return np.dot(A, x) - b
-
-    return RandFunc(quadratic_function, gradient)
+    return points, count_it, count_f, count_g
 
 
-init_point = (-10, 8)
+init_point = np.array([-10, 8])
+tolerance = 0.001
+lr = 0.05
 
-points_const, iteration_const = const_grad_desc(init_point, f2)
-print(points_const[-1])
+func = RandFunc(f1.f, f1.grad)
 
-points_armijo, iteration_armijo = armijo_grad_desc(init_point, f2)
-print(points_armijo[-1])
+print("point, iters, f_count, g_count")
+points_const, iteration_const, f_const, grad_const = const_grad_desc(init_point, func, learning_rate=lr, tolerance=tolerance)
+print(points_const[-1], iteration_const, f_const, grad_const)
 
-points_fastest, iteration_fastest = fastest_grad_desc(init_point, f2)
-print(points_fastest[-1])
+points_armijo, iteration_armijo, f_armijo, grad_armijo = armijo_grad_desc(init_point, func, tolerance=tolerance)
+print(points_armijo[-1], iteration_armijo, f_armijo, grad_armijo)
 
-points_conjugate, iteration_conjugate = conjugate_grad_desc(init_point, f2)
-print(points_conjugate[-1])
+points_fastest, iteration_fastest, f_fastest, grad_fastest = fastest_grad_desc(init_point, func, tolerance=tolerance)
+print(points_fastest[-1], iteration_fastest, f_fastest, grad_fastest)
 
-# plt.ion()
-# fig, ax = plt.subplots()
-# X, Y = np.meshgrid(np.linspace(-10, 10, 10), np.linspace(-8, 12, 10))
-# Z = f1.f(X, Y)
-#
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-# ax.plot_wireframe(X, Y, Z, color ='royalblue')
-#
-#
-# for i in range(len(points[0])):
-#     x = points[0][i]
-#     y = points[1][i]
-#     ax.scatter(x, y, f1.f(x, y), color='red')
-#
-# # ax.scatter(X, Y, Z, color='red')
-#
-# plt.show()
+points_conjugate, iteration_conjugate, f_conjugate, grad_conjugate = conjugate_grad_desc(init_point, func, tolerance=tolerance)
+print(points_conjugate[-1], iteration_conjugate, f_conjugate, grad_conjugate)
 
 
 def draw_level(points, func, x_min=-10, y_min=-10, x_max=10, y_max=10):
@@ -240,29 +195,99 @@ def draw_level(points, func, x_min=-10, y_min=-10, x_max=10, y_max=10):
 
     X, Y = np.meshgrid(np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100))
     Z = func.f((X, Y))
-    plt.contour(X, Y, Z,  levels=30)
+    plt.contour(X, Y, Z[0],  levels=30)
     plt.plot(x, y, marker="o")
     plt.show()
 
 
-draw_level(points_armijo, f1, x_min=-15, x_max=5, y_max=15)
+draw_level(points_const, func, x_min=-15, x_max=5, y_max=15)
+draw_level(points_armijo, func, x_min=-15, x_max=5, y_max=15)
+draw_level(points_fastest, func, x_min=-15, x_max=5, y_max=15)
+draw_level(points_conjugate, func, x_min=-15, x_max=5, y_max=15)
 
-# for f1
-# required number of iterations: 58
-# [-0.02465035  2.01479021]
-# required number of iterations: 10
-# [-0.01953125  2.01171875]
-# required number of iterations: 3
-# [0.00453104 1.99728138]
-# required number of iterations: 3
-# [-0.00433454  2.00260072]
 
-# for f2
-# required number of iterations: 70
-# [-0.01436334  0.03467562]
-# required number of iterations: 13
-# [-0.01003087  0.02421665]
-# required number of iterations: 9
-# [-0.01178931  0.00848169]
-# required number of iterations: 9
-# [-0.0076211   0.01553793]
+def generate_quadratic_function(n, k):
+    while True:
+        B = np.random.normal(size=(n, n))
+        A = B.T @ B
+
+        cond = np.linalg.cond(A)
+
+        if cond <= k:
+            break
+
+        s = np.sqrt(cond / k)
+        A = (1 / s) * A + (s - 1) * np.eye(n)
+
+    b = np.random.normal(size=n)
+    c = np.random.normal()
+
+    def quadratic_function(x):
+        return x.T @ A @ x + b.T @ x + c
+
+    def gradient(x):
+        return 2 * A @ x + b
+
+    x0 = np.random.normal(size=n)
+
+    return quadratic_function, gradient, x0
+
+
+def graphic(X, Y, Z):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    X, Y = np.meshgrid(X, Y)
+    Z = np.array(Z).reshape(X.shape)
+
+    ax.plot_surface(X, Y, Z)
+
+    ax.set_xlabel('n')
+    ax.set_ylabel('k')
+    ax.set_zlabel('Number of iterations')
+
+    plt.show()
+
+
+def gen_test_const():
+    Z_1 = []
+    Z_2 = []
+    Z_3 = []
+    Z_4 = []
+    X = range(2, 7)
+    Y = range(3, 15)
+    res_1 = 0
+    res_2 = 0
+    res_3 = 0
+    res_4 = 0
+    for x in X:
+        for y in Y:
+            for i in range(10):
+                if (x - y >= 2):
+                    break
+                f, df, p_0 = generate_quadratic_function(x, y)
+                func = RandFunc(f, df)
+                history, it_1 = const_grad_desc(p_0, func, tolerance=tolerance)
+                history, it_2 = armijo_grad_desc(p_0, func, tolerance=tolerance)
+                history, it_3 = fastest_grad_desc(p_0, func, tolerance=tolerance)
+                history, it_4 = conjugate_grad_desc(p_0, func, tolerance=tolerance)
+                res_1 += it_1
+                res_2 += it_2
+                res_3 += it_3
+                res_4 += it_4
+            Z_1.append(res_1 // 10)
+            Z_2.append(res_2 // 10)
+            Z_3.append(res_3 // 10)
+            Z_4.append(res_4 // 10)
+
+    print("Метод градиентного спуска с постоянным шагом")
+    graphic(X, Y, Z_1)
+    print("Метод градиентного спуска с дроблением шага")
+    graphic(X, Y, Z_2)
+    print("Наискорейший спуск")
+    graphic(X, Y, Z_3)
+    print("Метод сопряженных градиентов")
+    graphic(X, Y, Z_4)
+
+
+# gen_test_const()
